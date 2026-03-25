@@ -8,6 +8,7 @@ from .managers.dataset_manager import DatasetManager
 from .managers.dask_manager import DaskManager
 from .managers.reshape_manager import ReshapeManager
 from .managers.resample_manager import ResampleManager
+from .managers.proj_manager import ProjManager
 from .decoders import (
     identify_core_in_ds,
     set_core_vars_to_skeleton_from_ds,
@@ -18,7 +19,6 @@ from .decoders import (
     gather_coord_values,
 )
 from . import data_sanitizer as sanitize
-from .managers.utm_manager import UTMManager
 from typing import Iterable, Union, Optional
 from . import distance_funcs
 from .errors import (
@@ -50,13 +50,14 @@ from geo_parameters.metaparameter import MetaParameter
 from .distance_funcs import distance_2points
 import pandas as pd
 from copy import deepcopy
+from pyproj import CRS, Proj
 
 
-class Skeleton:
+class SkeletonExtended:
     """Contains methods and data of the spatial x,y / lon, lat coordinates and
     makes possible conversions between them.
 
-    Keeps track of the native structure of the grid (cartesian UTM / sperical).
+    Keeps track of the native structure of the grid (cartesian Proj / spherical).
     """
 
     chunks = None
@@ -68,12 +69,12 @@ class Skeleton:
         lon: Optional[Union[Iterable[float], Iterable[int], float, int]] = None,
         lat: Optional[Union[Iterable[float], Iterable[int], float, int]] = None,
         name: str = "LonelySkeleton",
-        utm: Optional[tuple[int, str]] = None,
+        proj: Optional[Union[str, CRS, Proj]] = None,
         chunks: Union[tuple[int], str] = None,
         **kwargs,
     ) -> None:
         self._init_structure(x, y, lon, lat, **kwargs)
-        self._init_managers(utm=utm, chunks=chunks)
+        self._init_managers(proj=proj, chunks=chunks)
         self._init_metadata(name=name)
 
     def _init_structure(self, x=None, y=None, lon=None, lat=None, **kwargs) -> None:
@@ -112,20 +113,18 @@ class Skeleton:
 
         self._ds_manager.create_structure(x=xvec, y=yvec, new_coords=kwargs)
 
-    def _init_managers(self, utm: tuple[str, int], chunks: tuple[int]) -> None:
-        """Initialized a DirTypeManager, UTMManager and DaskManager, and sets a UTM-zone"""
+    def _init_managers(self, proj: str, chunks: tuple[int]) -> None:
+        """Initialized a DirTypeManager, Projection_Manager and DaskManager, and sets a projecion/CRS"""
         if chunks is None:
             if hasattr(self, "_chunks"):  # Set by @activate_dask-decorator
                 chunks = self._chunks
 
         self.dask = DaskManager(skeleton=self, chunks=chunks)
 
-        self.utm = UTMManager(
-            lat=self.edges("lat", strict=True),
-            lon=self.edges("lon", strict=True),
+        self.proj = ProjManager(
             metadata_manager=self.meta,
         )
-        self.utm.set(utm, silent=True)
+        self.proj.set(proj, silent=True)
         self.resample = ResampleManager(self)
 
     def _init_metadata(self, name: str) -> None:
@@ -451,7 +450,7 @@ class Skeleton:
         return points
 
     def absorb(self, skeleton_to_absorb: "Skeleton", dim: str) -> "Skeleton":
-        """Absorb another object of same type over a centrain dimension.
+        """Absorb another object of same type over a certain dimension.
         For a PointSkeleton the inds-variable reorganized if dim='inds' is given."""
         if not self.is_gridded() and dim == "inds":
             inds = skeleton_to_absorb.inds() + len(self.inds())
@@ -1231,7 +1230,7 @@ class Skeleton:
         coord: str,
         native: bool = False,
         strict: bool = False,
-        utm: tuple[int, str] = None,
+        proj: Union[Proj, CRS] = None,
     ) -> tuple[float, float]:
         """Min and max values of x. Conversion made for sperical grids."""
         if coord not in ["x", "y", "lon", "lat"]:
@@ -1239,9 +1238,11 @@ class Skeleton:
             return
 
         if coord in ["x", "y"]:
-            x, y = self.xy(native=native, strict=strict, utm=utm)
+            x, y = self.xy(
+                native=native, strict=strict, proj=proj
+            )  # self.xy, self.lonlat are defined in subclasses
         else:
-            x, y = self.lonlat(native=native, strict=strict, utm=utm)
+            x, y = self.lonlat(native=native, strict=strict, proj=proj)
 
         if coord in ["x", "lon"]:
             val = x
@@ -1343,6 +1344,7 @@ class Skeleton:
             coords = coords + self.core.data_vars("spatial")
         return {c: self.get(c) for c in coords}
 
+    ### TODO adapt utm to proj logic
     def yank_point(
         self,
         lon: Union[float, Iterable[float]] = None,
