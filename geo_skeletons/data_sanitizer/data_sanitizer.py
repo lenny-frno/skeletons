@@ -52,6 +52,57 @@ def sanitize_input(
     return spatial["x"], spatial["y"], spatial["lon"], spatial["lat"], other
 
 
+def sanitize_input_extended(
+    x: Optional[Union[Iterable[float], Iterable[int], float, int]],
+    y: Optional[Union[Iterable[float], Iterable[int], float, int]],
+    lon: Optional[Union[Iterable[float], Iterable[int], float, int]],
+    lat: Optional[Union[Iterable[float], Iterable[int], float, int]],
+    rlon: Optional[Union[Iterable[float], Iterable[int], float, int]],
+    rlat: Optional[Union[Iterable[float], Iterable[int], float, int]],
+    is_gridded_format: bool,
+    **kwargs,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, dict[str, np.ndarray]]:
+    """Sanitizes input. After this all variables are either
+    non-empty np.ndarrays with len >= 1 or None"""
+
+    spatial = {"x": x, "y": y, "lon": lon, "lat": lat, "rlon": rlon, "rlat": rlat}
+    for key, value in spatial.items():
+        spatial[key] = sanitize_singe_variable(key, value)
+
+    if np.all([a is None for a in spatial.values()]):
+        raise GridError
+
+    other = {}
+    for key, value in kwargs.items():
+        if key == "time":
+            # other[key] = sanitize_singe_variable(key, value, fmt="datetime")
+            other[key] = sanitize_time_input(value)
+        else:
+            other[key] = sanitize_singe_variable(key, value)
+
+    if is_gridded_format:
+        spatial = get_unique_values(spatial)
+
+    else:
+        spatial = sanitize_point_structure(spatial)
+
+        for x, y in [("x", "y"), ("lon", "lat")]:
+            check_that_variables_equal_length(spatial[x], spatial[y])
+
+    if spatial["lon"] is not None:
+        spatial["lon"] = clean_lons(spatial["lon"])
+
+    return (
+        spatial["x"],
+        spatial["y"],
+        spatial["lon"],
+        spatial["lat"],
+        spatial["rlon"],
+        spatial["rlat"],
+        other,
+    )
+
+
 def force_to_iterable(x) -> Iterable:
     """Returns an numpy array with at least one dimension and Nones removed
 
@@ -71,7 +122,7 @@ def will_grid_be_spherical_or_cartesian(
     """Determines if the grid will be spherical or cartesian based on which
     inputs are given and which are None.
 
-    Returns the ringth vector and string to identify the native values.
+    Returns the rigth vector and string to identify the native values.
     """
 
     # Check for empty grid
@@ -105,6 +156,65 @@ def will_grid_be_spherical_or_cartesian(
         yvec = lat
 
     if xy and lonlat:
+        raise ValueError("Can't set both lon/lat and x/y!")
+
+    return native_x, native_y, xvec, yvec
+
+
+def determine_grid_type(
+    x: np.ndarray,
+    y: np.ndarray,
+    lon: np.ndarray,
+    lat: np.ndarray,
+    rlon: np.ndarray,
+    rlat: np.ndarray,
+) -> tuple[str, str, np.ndarray, np.ndarray]:
+    """Determines if the grid will be spherical, cartesian or rotated based on which
+    inputs are given and which are None.
+
+    Returns the rigth vector and string to identify the native values.
+    """
+
+    # Check for empty grid
+    if (
+        (lon is None or len(lon) == 0)
+        and (lat is None or len(lat) == 0)
+        and (rlon is None or len(rlon) == 0)
+        and (rlat is None or len(rlat) == 0)
+        and (x is None or len(x) == 0)
+        and (y is None or len(y) == 0)
+    ):
+        native_x = "x"
+        native_y = "y"
+        xvec = np.array([])
+        yvec = np.array([])
+        return native_x, native_y, xvec, yvec
+
+    xy = False
+    lonlat = False
+    rlonlat = False
+
+    if (x is not None) and (y is not None):
+        xy = True
+        native_x = "x"
+        native_y = "y"
+        xvec = x
+        yvec = y
+
+    if (lon is not None) and (lat is not None):
+        lonlat = True
+        native_x = "lon"
+        native_y = "lat"
+        xvec = lon
+        yvec = lat
+    if (rlon is not None) and (rlat is not None):
+        rlonlat = True
+        native_x = "rlon"
+        native_y = "rlat"
+        xvec = rlon
+        yvec = rlat
+
+    if (xy + lonlat + rlonlat) != 1:
         raise ValueError("Can't set both lon/lat and x/y!")
 
     return native_x, native_y, xvec, yvec
@@ -179,7 +289,7 @@ def check_that_variables_equal_length(x: np.ndarray, y: np.ndarray) -> bool:
 
 
 def sanitize_time_input(
-    time: Union[str, list[str], np.ndarray, pd.DatetimeIndex]
+    time: Union[str, list[str], np.ndarray, pd.DatetimeIndex],
 ) -> pd.DatetimeIndex:
     """Sanitized time input to pandas DatetimeIndex"""
     if isinstance(time, tuple):
@@ -218,6 +328,8 @@ def get_unique_values(spatial: Union[float, Iterable[float]]):
         coords = ["lon", "lat"]
     elif spatial.get("x") is not None and spatial.get("y") is not None:
         coords = ["x", "y"]
+    elif spatial.get("rlon") is not None and spatial.get("rlat") is not None:
+        coords = ["rlon", "rlat"]
 
     for coord in coords:
         val = spatial.get(coord)
