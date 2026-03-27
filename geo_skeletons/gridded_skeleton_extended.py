@@ -12,14 +12,18 @@ import geo_parameters as gp
 from typing import Optional, Union
 from .dask_computations import undask_me
 from pyproj import CRS, Proj
+import warnings
 
 lon_var = Coordinate(name="lon", meta=gp.grid.Lon, coord_group="spatial")
 lat_var = Coordinate(name="lat", meta=gp.grid.Lat, coord_group="spatial")
+rlon_var = Coordinate(name="rlon", meta=gp.grid.Rlon, coord_group="spatial")
+rlat_var = Coordinate(name="rlat", meta=gp.grid.Rlat, coord_group="spatial")
 x_var = Coordinate(name="x", meta=gp.grid.X, coord_group="spatial")
 y_var = Coordinate(name="y", meta=gp.grid.Y, coord_group="spatial")
 
 INITIAL_CARTESIAN_COORDS = [y_var, x_var]
-INITIAL_SPERICAL_COORDS = [lat_var, lon_var]
+INITIAL_SPHERICAL_COORDS = [lat_var, lon_var]
+INITIAL_ROTATED_COORDS = [rlat_var, rlon_var]
 
 INITIAL_VARS = []
 
@@ -62,8 +66,13 @@ class GriddedSkeletonExtended(SkeletonExtended):
             strict=True, mask=mask
         )
         x, y = skeleton.x(strict=True, mask=mask), skeleton.y(strict=True, mask=mask)
+        rlon, rlat = skeleton.rlon(strict=True, mask=mask), skeleton.rlat(
+            strict=True, mask=mask
+        )
 
-        new_skeleton = cls(lon=lon, lat=lat, x=x, y=y, name=skeleton.name)
+        new_skeleton = cls(
+            lon=lon, lat=lat, x=x, y=y, rlon=rlon, rlat=rlat, name=skeleton.name
+        )
         new_skeleton.proj.set(skeleton.proj.projection(), silent=True)
 
         return new_skeleton
@@ -73,18 +82,16 @@ class GriddedSkeletonExtended(SkeletonExtended):
         return True
 
     @staticmethod
-    def _initial_coords(spherical: bool = False) -> list[Coordinate]:
-        """Initial coordinates used with GriddedSkeletons. Additional coordinates
-        can be added by decorators (e.g. @add_coord, @add_time).
-        """
+    def _initial_coords(spherical: bool = False, rotated: bool = False):
+        if rotated:
+            return INITIAL_ROTATED_COORDS
         if spherical:
-            return INITIAL_SPERICAL_COORDS
-        else:
-            return INITIAL_CARTESIAN_COORDS
+            return INITIAL_SPHERICAL_COORDS
+        return INITIAL_CARTESIAN_COORDS
 
     @staticmethod
-    def _initial_vars(spherical: bool = False) -> list[DataVar]:
-        """Initial coordinates used with GriddedSkeletons. Additional variables
+    def _initial_vars(spherical: bool = False, rotated: bool = False) -> list[DataVar]:
+        """Initial variables used with GriddedSkeletons. Additional variables
         can be added by decorator @add_datavar.
         """
         return INITIAL_VARS
@@ -145,7 +152,6 @@ class GriddedSkeletonExtended(SkeletonExtended):
         mask: Optional[np.ndarray] = None,
         normalize: bool = False,
         proj: Union[Proj, CRS] = None,
-        suppress_warning: bool = False,
         **kwargs,
     ) -> np.ndarray:
         """Returns the cartesian x-coordinate.
@@ -166,19 +172,25 @@ class GriddedSkeletonExtended(SkeletonExtended):
             return None
 
         if not self.core.is_cartesian() and native:
-            return self.lon(proj=proj, **kwargs)
+            if self.core.is_spherical():
+                return self.lon(proj=proj, **kwargs)
+            elif self.core.is_rotated():
+                return self.rlon(proj=proj, **kwargs)
 
         if not self.core.is_cartesian() and strict:
             return None
 
+        if self.core.is_rotated():
+            raise ValueError(
+                "x()/y() are not defined for rotated pole grids — "
+                "use rlon()/rlat() for native coordinates or lon()/lat() for true geographic coordinates."
+            )
+
         if self.core.is_cartesian() and (self.proj.projection == proj or proj is None):
             x = self._ds_manager.get("x", **kwargs).values.copy()[vec_mask]
         else:
+
             lon, lat = self.lon(mask=mask, **kwargs), self.lat(mask=mask, **kwargs)
-            if not suppress_warning and len(lat) > 1:
-                print(
-                    "Regridding spherical grid to cartesian coordinates will cause a rotation! Use '_, y = skeleton.xy()' to get a list of all points."
-                )
             x = self.proj._x(lon=lon, lat=lat, proj=proj)
 
         if normalize:
@@ -192,7 +204,6 @@ class GriddedSkeletonExtended(SkeletonExtended):
         mask: Optional[np.ndarray] = None,
         normalize: bool = False,
         proj: Union[Proj, CRS] = None,
-        suppress_warning: bool = False,
         **kwargs,
     ) -> np.ndarray:
         """Returns the cartesian y-coordinate.
@@ -213,10 +224,19 @@ class GriddedSkeletonExtended(SkeletonExtended):
             return None
 
         if not self.core.is_cartesian() and native:
-            return self.lat(proj=proj, **kwargs)
+            if self.core.is_spherical():
+                return self.lat(proj=proj, **kwargs)
+            elif self.core.is_rotated():
+                return self.rlat(proj=proj, **kwargs)
 
         if not self.core.is_cartesian() and strict:
             return None
+
+        if self.core.is_rotated():
+            raise ValueError(
+                "x()/y() are not defined for rotated pole grids — "
+                "use rlon()/rlat() for native coordinates or lon()/lat() for true geographic coordinates."
+            )
 
         if self.core.is_cartesian() and (
             self.proj.projection() == proj or proj is None
@@ -224,10 +244,6 @@ class GriddedSkeletonExtended(SkeletonExtended):
             y = self._ds_manager.get("y", **kwargs).values.copy()[vec_mask]
         else:
             lon, lat = self.lon(mask=mask, **kwargs), self.lat(mask=mask, **kwargs)
-            if not suppress_warning and len(lon) > 1:
-                print(
-                    "Regridding spherical grid to cartesian coordinates will cause a rotation! Use 'x, _ = skeleton.xy()' to get a list of all points."
-                )
             y = self.proj._y(lon=lon, lat=lat, proj=proj)
 
         if normalize:
@@ -241,12 +257,12 @@ class GriddedSkeletonExtended(SkeletonExtended):
         strict=False,
         mask: Optional[np.ndarray] = None,
         proj: Optional[tuple[int, str]] = None,
-        suppress_warning: bool = False,
         **kwargs,
     ) -> np.ndarray:
         """Returns the spherical lon-coordinate. 'None' for cartesian grids that have no projection.
 
         If the grid is cartesian, a conversion from projected coordinates is made.
+        If the grid is rotated, a conversion from rotated coordinates is made.
 
         strict = True gives 'None' if Skeleton is cartesian
         native = True gives proj x-values if Skeleton is cartesian
@@ -260,24 +276,38 @@ class GriddedSkeletonExtended(SkeletonExtended):
         if self.ds() is None:
             return None
 
-        if self.core.is_cartesian() and native:
-            return self.x(proj=proj, **kwargs)
-
-        if self.core.is_cartesian() and strict:
-            return None
-
-        if not self.core.is_cartesian():
+        if self.core.is_spherical():
             return self._ds_manager.get("lon", **kwargs).values.copy()[vec_mask]
 
-        x, y = self.x(mask=mask, proj=proj, **kwargs), self.y(
-            mask=mask, proj=proj, **kwargs
-        )
+        if not self.core.is_spherical() and strict:
+            return None
 
-        if not suppress_warning and len(y) > 1:
-            print(
-                "Regridding cartesian grid to spherical coordinates will cause a rotation! Use 'lon, _ = skeleton.lonlat()' to get a list of all points."
-            )
-        return self.proj._lon(x=x, y=y, proj=proj)
+        if self.core.is_cartesian():
+            if native:
+                return self.x(proj=proj, **kwargs)  # TODO should maybe mask here
+            else:
+                x, y = self.x(mask=mask, proj=proj, **kwargs), self.y(
+                    mask=mask, proj=proj, **kwargs
+                )
+
+                return self.proj._lon(x=x, y=y, proj=proj)
+
+        if self.core.is_rotated():
+
+            if native:
+                warnings.warn(
+                    "Using rotated longitude to represent lon coordinate. Deprecated"
+                )
+                return self.rlon(proj=proj, **kwargs)
+            else:
+                rlon, rlat = (
+                    self.rlon(mask=mask, proj=proj, **kwargs),
+                    self.rlat(mask=mask, proj=proj, **kwargs),
+                )
+                return self.proj._lon(x=rlon, y=rlat, proj=self.proj.projection())
+
+        # should be in one of the cases above otherwise raise an error
+        raise ValueError("something is wrong...")
 
     def lat(
         self,
@@ -285,12 +315,12 @@ class GriddedSkeletonExtended(SkeletonExtended):
         strict=False,
         mask: Optional[np.ndarray] = None,
         proj: Optional[tuple[int, str]] = None,
-        suppress_warning: bool = False,
         **kwargs,
     ) -> np.ndarray:
         """Returns the spherical lat-coordinate. 'None' for cartesian grids that have no projection.
 
         If the grid is cartesian, a conversion from projected coordinates is made.
+        If the grid is rotated, a conversion from rotated coordinates is made.
 
         strict = True gives 'None' if Skeleton is cartesian
         native = True gives projected y-values if Skeleton is cartesian
@@ -304,24 +334,54 @@ class GriddedSkeletonExtended(SkeletonExtended):
         if self.ds() is None:
             return None
 
-        if self.core.is_cartesian() and native:
-            return self.y(proj=proj, **kwargs)
-
-        if self.core.is_cartesian() and strict:
-            return None
-
-        if not self.core.is_cartesian():
+        if self.core.is_spherical():
             return self._ds_manager.get("lat", **kwargs).values.copy()[vec_mask]
 
-        x, y = self.x(mask=mask, proj=proj, **kwargs), self.y(
-            mask=mask, proj=proj, **kwargs
-        )
-        if not suppress_warning and len(x) > 1:
-            print(
-                "Regridding cartesian grid to spherical coordinates will cause a rotation! Use '_, lat = skeleton.lonlat()' to get a list of all points."
-            )
+        if not self.core.is_spherical() and strict:
+            return None
 
-        return self.proj._lat(x=x, y=y, proj=proj)
+        if self.core.is_cartesian():
+            if native:
+                return self.y(proj=proj, **kwargs)  # TODO should maybe mask here
+            else:
+                x, y = self.x(mask=mask, proj=proj, **kwargs), self.y(
+                    mask=mask, proj=proj, **kwargs
+                )
+
+                return self.proj._lat(x=x, y=y, proj=proj)
+
+        if self.core.is_rotated():
+
+            if native:
+                warnings.warn(
+                    "Using rotated latitude to represent lat coordinate. Deprecated"
+                )
+                return self.rlat(proj=proj, **kwargs)
+            else:
+                rlon, rlat = (
+                    self.rlon(mask=mask, proj=proj, **kwargs),
+                    self.rlat(mask=mask, proj=proj, **kwargs),
+                )
+                return self.proj._lat(x=rlon, y=rlat, proj=self.proj.projection())
+
+        # should be in one of the cases above otherwise raise an error
+        raise ValueError("something is wrong...")
+
+    def rlon(self, mask: Optional[np.ndarray] = None, **kwargs) -> np.ndarray:
+        """Returns the native rotated longitude vector. None if grid is not rotated."""
+        if not self.core.is_rotated():
+            return None
+        mask = self._check_mask_right_shape(mask, self.core.x_str, **kwargs)
+        vec_mask = np.any(mask, axis=0)
+        return self._ds_manager.get("rlon", **kwargs).values.copy()[vec_mask]
+
+    def rlat(self, mask: Optional[np.ndarray] = None, **kwargs) -> np.ndarray:
+        """Returns the native rotated latitude vector. None if grid is not rotated."""
+        if not self.core.is_rotated():
+            return None
+        mask = self._check_mask_right_shape(mask, self.core.y_str, **kwargs)
+        vec_mask = np.any(mask, axis=1)
+        return self._ds_manager.get("rlat", **kwargs).values.copy()[vec_mask]
 
     def xy(
         self,
@@ -418,11 +478,13 @@ class GriddedSkeletonExtended(SkeletonExtended):
     ) -> tuple[np.ndarray, np.ndarray]:
         """Returns a tuple of native x and y of all points."""
 
-        x, y = np.meshgrid(
-            self.x(native=True, proj=proj, normalize=normalize, **kwargs),
-            self.y(native=True, proj=proj, normalize=normalize, **kwargs),
-        )
-
+        if self.core.is_rotated():
+            x, y = np.meshgrid(self.rlon(**kwargs), self.rlat(**kwargs))
+        else:
+            x, y = np.meshgrid(
+                self.x(native=True, proj=proj, normalize=normalize, **kwargs),
+                self.y(native=True, proj=proj, normalize=normalize, **kwargs),
+            )
         return x.ravel(), y.ravel()
 
     def set_spacing(
@@ -433,6 +495,8 @@ class GriddedSkeletonExtended(SkeletonExtended):
         dy: float = 0.0,
         dm: float = 0.0,
         dnmi: float = 0.0,
+        drlon=0.0,
+        drlat=0.0,  # new
         nx: int = 0,
         ny: int = 0,
         floating_edge: bool = False,
@@ -459,12 +523,16 @@ class GriddedSkeletonExtended(SkeletonExtended):
 
         """
 
-        def determine_nx(x_type: str, nx, dx, dm, dlon, dnmi) -> tuple[int, float]:
+        def determine_nx(
+            x_type: str, nx, dx, dm, dlon, drlon, dnmi
+        ) -> tuple[int, float]:
             """Determines how many points is needed to get the desired resolution in one dimension"""
             if x_type == "x":
                 lon_type = "lon"
+                rlon_type = "rlon"
             else:
                 lon_type = "lat"
+                rlat_type = "rlat"
 
             x_end = self.edges(x_type, native=True)[1]
 
@@ -495,7 +563,20 @@ class GriddedSkeletonExtended(SkeletonExtended):
                         )
                     x_end = self.edges(lon_type)[0] + (nx - 1) * dlon
                 return int(nx), x_end
-
+            if drlon:
+                nx = (
+                    np.round(
+                        (self.edges(rlon_type)[1] - self.edges(rlon_type)[0]) / drlon
+                    )
+                    + 1
+                )
+                if floating_edge:
+                    if self.core.is_cartesian():
+                        raise ValueError(
+                            "Grid is cartesian, so cant set exact dlon/dlat using floating_edge!"
+                        )
+                    x_end = self.edges(rlon_type)[0] + (nx - 1) * drlon
+                return int(nx), x_end
             if dm:
                 dx = dm
 
@@ -510,10 +591,16 @@ class GriddedSkeletonExtended(SkeletonExtended):
                 return int(nx), x_end
 
             # Nothing given
-            return len(self.x(native=True)), x_end
+            if self.core.is_rotated():
+                native_vec = self.rlon() if x_type == "x" else self.rlat()
+            else:
+                native_vec = (
+                    self.x(native=True) if x_type == "x" else self.y(native=True)
+                )
+            return len(native_vec), x_end
 
-        nx, native_x_end = determine_nx("x", nx, dx, dm, dlon, dnmi)
-        ny, native_y_end = determine_nx("y", ny, dy, dm, dlat, dnmi)
+        nx, native_x_end = determine_nx("x", nx, dx, dm, dlon, drlon, dnmi)
+        ny, native_y_end = determine_nx("y", ny, dy, dm, dlat, drlat, dnmi)
 
         # Unique to not get [0,0,0] etc. arrays if nx=1
         x_native = np.unique(np.linspace(self.x(native=True)[0], native_x_end, nx))
@@ -524,14 +611,27 @@ class GriddedSkeletonExtended(SkeletonExtended):
             y = y_native
             lon = None
             lat = None
-        else:
-            lon = x_native
-            lat = y_native
+            rlon = None
+            rlat = None
+        elif self.core.is_spherical():
             x = None
             y = None
+            lon = x_native
+            lat = y_native
+            rlon = None
+            rlat = None
+        elif self.core.is_rotated():
+            x = None
+            y = None
+            lon = None
+            lat = None
+            rlon = x_native
+            rlat = y_native
+        else:
+            raise ValueError("something is wrong ...")
 
         old_metadata = self.meta._metadata
-        self._init_structure(x, y, lon, lat)
+        self._init_structure(x, y, lon, lat, rlon, rlat)
         self.meta.set_by_dict(old_metadata)
 
     def _check_mask_right_shape(

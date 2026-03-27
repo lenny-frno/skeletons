@@ -15,13 +15,20 @@ INITIAL_COORDS = [inds_coord]
 
 lon_var = DataVar(name="lon", meta=gp.grid.Lon, coord_group="spatial", default_value=0)
 lat_var = DataVar(name="lat", meta=gp.grid.Lat, coord_group="spatial", default_value=0)
+rlon_var = DataVar(
+    name="rlon", meta=gp.grid.Rlon, coord_group="spatial", default_value=0
+)
+rlat_var = DataVar(
+    name="rlat", meta=gp.grid.Rlat, coord_group="spatial", default_value=0
+)
 x_var = DataVar(name="x", meta=gp.grid.X, coord_group="spatial", default_value=0)
 y_var = DataVar(name="y", meta=gp.grid.Y, coord_group="spatial", default_value=0)
 INITIAL_CARTESIAN_VARS = [x_var, y_var]  #: "inds", "y": "inds"}
 INITIAL_SPHERICAL_VARS = [lon_var, lat_var]  # {"lat": "inds", "lon": "inds"}
+INITIAL_ROTATED_VARS = [rlon_var, rlat_var]
 
 
-class PointSkeleton(SkeletonExtended):
+class PointSkeletonExtended(SkeletonExtended):
     """Gives a unstructured structure to the Skeleton.
 
     In practise this means that:
@@ -63,19 +70,23 @@ class PointSkeleton(SkeletonExtended):
         return False
 
     @staticmethod
-    def _initial_coords(spherical: bool = False) -> list[Coordinate]:
+    def _initial_coords(
+        spherical: bool = False, rotated: bool = False
+    ) -> list[Coordinate]:
         """Initial coordinates used with PointSkeletons. Additional coordinates
         can be added by decorators (e.g. @add_coord, @add_time).
         """
         return INITIAL_COORDS
 
     @staticmethod
-    def _initial_vars(spherical: bool = False) -> list[DataVar]:
+    def _initial_vars(spherical: bool = False, rotated: bool = False) -> list[DataVar]:
         """Initial variables used with PointSkeletons. Additional variables
         can be added by decorator @add_datavar.
         """
         if spherical:
             return INITIAL_SPHERICAL_VARS
+        elif rotated:
+            return INITIAL_ROTATED_VARS
         else:
             return INITIAL_CARTESIAN_VARS
 
