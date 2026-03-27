@@ -68,16 +68,20 @@ class SkeletonExtended:
         y: Optional[Union[Iterable[float], Iterable[int], float, int]] = None,
         lon: Optional[Union[Iterable[float], Iterable[int], float, int]] = None,
         lat: Optional[Union[Iterable[float], Iterable[int], float, int]] = None,
+        rlon: Optional[Union[Iterable[float], Iterable[int], float, int]] = None,
+        rlat: Optional[Union[Iterable[float], Iterable[int], float, int]] = None,
         name: str = "LonelySkeleton",
         proj: Optional[Union[str, CRS, Proj]] = None,
         chunks: Union[tuple[int], str] = None,
         **kwargs,
     ) -> None:
-        self._init_structure(x, y, lon, lat, **kwargs)
+        self._init_structure(x, y, lon, lat, rlon, rlat, **kwargs)
         self._init_managers(proj=proj, chunks=chunks)
         self._init_metadata(name=name)
 
-    def _init_structure(self, x=None, y=None, lon=None, lat=None, **kwargs) -> None:
+    def _init_structure(
+        self, x=None, y=None, lon=None, lat=None, rlon=None, rlat=None, **kwargs
+    ) -> None:
         """Determines grid type (Cartesian/Spherical), generates a DatasetManager
         and initializes the Xarray dataset within the DatasetManager.
 
@@ -97,19 +101,29 @@ class SkeletonExtended:
             self._ds_manager.coord_manager = self.core
         self.meta._ds_manager = self._ds_manager
 
-        x, y, lon, lat, kwargs = sanitize.sanitize_input(
-            x, y, lon, lat, self.is_gridded(), **kwargs
+        x, y, lon, lat, rlon, rlat, kwargs = sanitize.sanitize_input_extended(
+            x, y, lon, lat, rlon, rlat, self.is_gridded(), **kwargs
         )
 
-        x_str, y_str, xvec, yvec = sanitize.will_grid_be_spherical_or_cartesian(
-            x, y, lon, lat
+        x_str, y_str, xvec, yvec = sanitize.determine_grid_type(
+            x, y, lon, lat, rlon, rlat
         )
         self.core.x_str = x_str
         self.core.y_str = y_str
 
-        # Reset initial coordinates and data variables (default are 'x','y' but might now be 'lon', 'lat')
-        self.core.set_initial_coords(self._initial_coords(spherical=(x_str == "lon")))
-        self.core.set_initial_vars(self._initial_vars(spherical=(x_str == "lon")))
+        # Reset initial coordinates and data variables (default are 'x','y' but might now be 'lon', 'lat','rlon','rlat')
+        self.core.set_initial_coords(
+            self._initial_coords(
+                spherical=(x_str == "lon"),
+                rotated=(x_str == "rlon"),
+            )
+        )
+        self.core.set_initial_vars(
+            self._initial_vars(
+                spherical=(x_str == "lon"),
+                rotated=(x_str == "rlon"),
+            )
+        )
 
         self._ds_manager.create_structure(x=xvec, y=yvec, new_coords=kwargs)
 
