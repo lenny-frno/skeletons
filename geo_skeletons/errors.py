@@ -55,7 +55,7 @@ class CoordinateWrongDimensionError(SkeletonError):
 class GridError(SkeletonError):
     def __init__(
         self,
-        msg: str = "A proper spatial grid is not set: Requires 'x' and 'y', 'lon' and 'lat' or 'inds'!",
+        msg: str = "A proper spatial grid is not set: Requires 'x' and 'y', 'lon' and 'lat', 'rlon' and 'rlat' or 'inds'!",
     ):
         super().__init__(msg)
 
