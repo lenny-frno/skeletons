@@ -5,12 +5,20 @@ from pyproj import Proj, CRS, Transformer
 import warnings
 
 
+def is_rotated_proj(crs: CRS) -> bool:
+    cf = crs.to_cf()
+    proj_dict = crs.to_dict()
+    return "rotated" in cf.get("grid_mapping_name", "") or "ob_tran" in proj_dict.get(
+        "proj", ""
+    )
+
+
 class ProjManager:
     def __init__(self, metadata_manager: MetaDataManager):
         self._meta: MetaDataManager = metadata_manager
         self._projection: Optional[CRS] = None
 
-    def projection(self) -> Proj:
+    def projection(self) -> CRS:
         """Returns the CRS object. Returns None if not set."""
         return self._projection
 
@@ -88,6 +96,12 @@ class ProjManager:
     def _x(
         self, lon: np.ndarray, lat: np.ndarray, proj: Optional[CRS] = None
     ) -> np.ndarray:
+        if proj is None:
+            proj = self.projection()
+        if self.projection().is_projected and is_rotated_proj(proj):
+            raise ValueError(
+                "Reprojecting cartesian coordinates on rotated coordinates is not allowed."
+            )
         lon, lat = self._resolve_shapes(lon, lat, "lon", "lat")
         x, _ = self._transformer_from_lonlat(proj).transform(lon, lat)
         return x
@@ -95,6 +109,12 @@ class ProjManager:
     def _y(
         self, lon: np.ndarray, lat: np.ndarray, proj: Optional[CRS] = None
     ) -> np.ndarray:
+        if proj is None:
+            proj = self.projection()
+        if self.projection().is_projected and is_rotated_proj(proj):
+            raise ValueError(
+                "Reprojecting cartesian coordinates on rotated coordinates is not allowed."
+            )
         lon, lat = self._resolve_shapes(lon, lat, "lon", "lat")
         _, y = self._transformer_from_lonlat(proj).transform(lon, lat)
         return y

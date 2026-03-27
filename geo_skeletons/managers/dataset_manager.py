@@ -81,8 +81,19 @@ class DatasetManager:
         """Creates dictionary of variables given the x,y-vectors and provided data"""
         var_dict = {}
         initial_vars = self.coord_manager.data_vars("spatial")
-        initial_x = "x" if "x" in initial_vars else "lon"
-        initial_y = "y" if "y" in initial_vars else "lat"
+        if "x" in initial_vars:
+            initial_x = "x"
+        elif "rlon" in initial_vars:
+            initial_x = "rlon"
+        else:
+            initial_x = "lon"
+
+        if "y" in initial_vars:
+            initial_y = "y"
+        elif "rlat" in initial_vars:
+            initial_y = "rlat"
+        else:
+            initial_y = "lat"
 
         if initial_y in initial_vars:
             coord_group = self.coord_manager.get(initial_y).coord_group

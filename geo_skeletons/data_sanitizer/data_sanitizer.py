@@ -61,7 +61,15 @@ def sanitize_input_extended(
     rlat: Optional[Union[Iterable[float], Iterable[int], float, int]],
     is_gridded_format: bool,
     **kwargs,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, dict[str, np.ndarray]]:
+) -> tuple[
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    dict[str, np.ndarray],
+]:
     """Sanitizes input. After this all variables are either
     non-empty np.ndarrays with len >= 1 or None"""
 
@@ -86,11 +94,13 @@ def sanitize_input_extended(
     else:
         spatial = sanitize_point_structure(spatial)
 
-        for x, y in [("x", "y"), ("lon", "lat")]:
+        for x, y in [("x", "y"), ("lon", "lat"), ("rlon", "rlat")]:
             check_that_variables_equal_length(spatial[x], spatial[y])
 
     if spatial["lon"] is not None:
         spatial["lon"] = clean_lons(spatial["lon"])
+    if spatial["rlon"] is not None:
+        spatial["rlon"] = clean_lons(spatial["rlon"])
 
     return (
         spatial["x"],

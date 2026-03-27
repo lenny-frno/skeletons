@@ -5,7 +5,7 @@ from typing import Union
 from geo_parameters.metaparameter import MetaParameter
 
 # These are used e.g. by the coordinate_manager to keep track of mandaroty coordinates and added coordinates
-SPATIAL_COORDS = ["y", "x", "lat", "lon", "inds"]
+SPATIAL_COORDS = ["y", "x", "lat", "lon", "rlon", "rlat", "inds"]
 
 
 # List assumed coordinate aliases here. These are used e.g. by decoders.
@@ -15,6 +15,8 @@ COORD_ALIASES = {
     gp.grid.Y: ["y"],
     gp.grid.Lon: ["lon", "longitude"],
     gp.grid.Lat: ["lat", "latitude"],
+    gp.grid.Rlon: ["rlon", "rotated longitude"],
+    gp.grid.Rlat: ["rlat", "rotated latitude"],
     gp.wave.Freq: ["freq", "frequency"],
     gp.wave.Dirs: ["dirs", "directions", "direction", "theta"],
 }

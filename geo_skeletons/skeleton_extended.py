@@ -93,7 +93,6 @@ class SkeletonExtended:
         if not self.core._is_initialized():
             self.core = deepcopy(self.core)  # Makes a copy of the class coord_manager
             self.meta = self.core.meta
-
         # # The manager will contain the Xarray Dataset
         if self.ds() is None:
             self._ds_manager = DatasetManager(self.core)
@@ -124,7 +123,6 @@ class SkeletonExtended:
                 rotated=(x_str == "rlon"),
             )
         )
-
         self._ds_manager.create_structure(x=xvec, y=yvec, new_coords=kwargs)
 
     def _init_managers(self, proj: str, chunks: tuple[int]) -> None:
@@ -1246,9 +1244,9 @@ class SkeletonExtended:
         strict: bool = False,
         proj: Union[Proj, CRS] = None,
     ) -> tuple[float, float]:
-        """Min and max values of x. Conversion made for sperical grids."""
-        if coord not in ["x", "y", "lon", "lat"]:
-            print("coord need to be 'x', 'y', 'lon' or 'lat'.")
+        """Min and max values of x. Conversion made for spherical grids."""
+        if coord not in ["x", "y", "lon", "lat", "rlon", "rlat"]:
+            print("coord need to be 'x', 'y', 'lon', 'lat', 'rlon' or 'rlat'.")
             return
 
         if coord in ["x", "y"]:
