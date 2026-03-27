@@ -112,6 +112,7 @@ class DatasetManager:
         # Check spatial coordinates
         xy_set = "x" in coords and "y" in coords
         lonlat_set = "lon" in coords and "lat" in coords
+        rlonlat_set = "rlon" in coords and "rlat" in coords
         inds_set = "inds" in coords
         if inds_set:
             ind_len = len(coord_dict["inds"])
@@ -123,9 +124,9 @@ class DatasetManager:
                         index_variable="inds",
                         len_of_index_variable=ind_len,
                     )
-        if not (xy_set or lonlat_set or inds_set):
+        if not (xy_set or lonlat_set or inds_set or rlonlat_set):
             raise GridError
-        if sum([xy_set, lonlat_set, inds_set]) > 1:
+        if sum([xy_set, lonlat_set, inds_set, rlonlat_set]) > 1:
             raise GridError
 
         # Check that all added coordinates are provided
@@ -259,7 +260,9 @@ class DatasetManager:
 
         for key, value in coordinates.items():
             data = data.sel({key: value}, **keywords)
-            if key not in data.dims: # Some versions of xarray drops the dimension even with drop=False
+            if (
+                key not in data.dims
+            ):  # Some versions of xarray drops the dimension even with drop=False
                 data = data.expand_dims({key: np.atleast_1d(value)})
 
         return data
