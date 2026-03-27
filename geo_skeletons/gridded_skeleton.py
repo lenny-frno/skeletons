@@ -35,7 +35,9 @@ class GriddedSkeleton(Skeleton):
     """
 
     meta = MetaDataManager(ds_manager=None)
-    core = CoordinateManager(INITIAL_CARTESIAN_COORDS, INITIAL_VARS, metadata_manager=meta)
+    core = CoordinateManager(
+        INITIAL_CARTESIAN_COORDS, INITIAL_VARS, metadata_manager=meta
+    )
 
     @classmethod
     def from_skeleton(
@@ -163,7 +165,7 @@ class GriddedSkeleton(Skeleton):
             return None
 
         if not self.core.is_cartesian() and native:
-            return self.lon(utm=utm, **kwargs)
+            return self.lon(utm=utm, **kwargs)  # FLAG maybe should be a mask in here.
 
         if not self.core.is_cartesian() and strict:
             return None
@@ -211,7 +213,7 @@ class GriddedSkeleton(Skeleton):
             return None
 
         if not self.core.is_cartesian() and native:
-            return self.lat(utm=utm, **kwargs)
+            return self.lat(utm=utm, **kwargs)  # FLAG maybe should be a mask in here.
 
         if not self.core.is_cartesian() and strict:
             return None
@@ -258,7 +260,7 @@ class GriddedSkeleton(Skeleton):
             return None
 
         if self.core.is_cartesian() and native:
-            return self.x(utm=utm, **kwargs)
+            return self.x(utm=utm, **kwargs)  # FLAG maybe should be a mask in here.
 
         if self.core.is_cartesian() and strict:
             return None
@@ -303,7 +305,7 @@ class GriddedSkeleton(Skeleton):
             return None
 
         if self.core.is_cartesian() and native:
-            return self.y(utm=utm, **kwargs)
+            return self.y(utm=utm, **kwargs)  # FLAG maybe should be a mask in here.
 
         if self.core.is_cartesian() and strict:
             return None

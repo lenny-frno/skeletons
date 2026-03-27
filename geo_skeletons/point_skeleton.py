@@ -33,8 +33,10 @@ class PointSkeleton(Skeleton):
     """
 
     meta = MetaDataManager(ds_manager=None)
-    core = CoordinateManager(INITIAL_COORDS, INITIAL_CARTESIAN_VARS, metadata_manager=meta)
-    
+    core = CoordinateManager(
+        INITIAL_COORDS, INITIAL_CARTESIAN_VARS, metadata_manager=meta
+    )
+
     @classmethod
     def from_skeleton(
         cls,
